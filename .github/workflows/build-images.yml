@@ -14,6 +14,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/cs389l-web/alr-pa-env
+  IMAGE_TAG: "25.11"
 
 jobs:
   build-and-push:
@@ -21,8 +22,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.load.outputs.image_tag }}
 
     strategy:
       matrix:
@@ -62,17 +61,8 @@ jobs:
           nix build .#packages.${{ matrix.arch }}.${{ matrix.image }} -L
 
       - name: Load image into Docker
-        id: load
         run: |
           docker load < result
-          
-          # Extract the image name and tag from the loaded image
-          LOADED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | head -n 1)
-          IMAGE_NAME=$(echo $LOADED_IMAGE | cut -d: -f1)
-          IMAGE_TAG=$(echo $LOADED_IMAGE | cut -d: -f2)
-          
-          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Tag and push image
         if: github.event_name != 'pull_request'
@@ -84,20 +74,16 @@ jobs:
             DOCKER_ARCH="arm64"
           fi
 
-          # Get the loaded image info
-          IMAGE_NAME="${{ steps.load.outputs.image_name }}"
-          IMAGE_TAG="${{ steps.load.outputs.image_tag }}"
-          
           # Tag with architecture suffix
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${IMAGE_TAG}-${DOCKER_ARCH}
+          docker tag ${{ matrix.image }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}-${DOCKER_ARCH}
           
           # Push architecture-specific image
-          docker push ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${IMAGE_TAG}-${DOCKER_ARCH}
+          docker push ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}-${DOCKER_ARCH}
           
           # If this is a tagged release, also push with version tag
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${VERSION}-${DOCKER_ARCH}
+            docker tag ${{ matrix.image }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${VERSION}-${DOCKER_ARCH}
             docker push ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${VERSION}-${DOCKER_ARCH}
           fi
 
@@ -127,7 +113,7 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           IMAGE_NAME="${{ matrix.image }}"
-          IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          IMAGE_TAG="${{ env.IMAGE_TAG }}"
           
           # Create manifest for the tag
           docker manifest create ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${IMAGE_TAG} \
