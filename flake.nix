@@ -54,7 +54,8 @@
         "x86_64-linux" = "sha256-7skZqBy1GE4hjEH67XizzwhUzMvo4bJNvmD0v71pBgE=";
         "aarch64-linux" = "sha256-m2Gjt52Z5X1Aa2RFg42p6OPd90s/6AF/zSm0UYiU2YI=";
       };
-      devcontainerBase = pkgs.dockerTools.pullImage {
+
+      fromImage = pkgs.dockerTools.pullImage {
         imageName = "mcr.microsoft.com/devcontainers/base";
         imageDigest = "sha256:30b0a0c004ca94d36c323ee993361a7e0ae25ea255ea125201e8a9587501c324";
         finalImageName = "devcontainers/base";
@@ -64,12 +65,17 @@
         arch = archMap.${system};
       };
       tag = "25.11-trixie";
+      runAsRoot = ''
+        # https://github.com/NixOS/nixpkgs/issues/129007
+        for f in /usr/bin/*; do /bin/ln -s $f /bin/$(/bin/basename $f) 2>/dev/null || true; done
+        for f in /usr/lib/*; do /bin/ln -s $f /lib/$(/bin/basename $f) 2>/dev/null || true; done
+      '';
+      diskSize = 2048;
     in {
       alr-java = with pkgs;
         dockerTools.buildImage {
           name = "alr-java";
-          inherit tag;
-          fromImage = devcontainerBase;
+          inherit fromImage tag runAsRoot diskSize;
 
           copyToRoot = buildEnv {
             name = "image-root";
@@ -86,12 +92,11 @@
       alr-dafny = with pkgs;
         dockerTools.buildImage {
           name = "alr-dafny";
-          inherit tag;
-          fromImage = devcontainerBase;
+          inherit fromImage tag runAsRoot diskSize;
 
           copyToRoot = buildEnv {
             name = "image-root";
-            paths = [dafny dotnet-sdk];
+            paths = [dafny dotnet-sdk coreutils];
             pathsToLink = ["/bin"];
           };
 
