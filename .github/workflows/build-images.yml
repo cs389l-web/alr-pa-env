@@ -1,0 +1,144 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/cs389l-web/alr-pa-env
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.load.outputs.image_tag }}
+
+    strategy:
+      matrix:
+        image: [alr-java, alr-dafny]
+        arch: [x86_64-linux, aarch64-linux]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU for multi-arch builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,amd64
+
+      - name: Build image with Nix
+        run: |
+          nix build .#packages.${{ matrix.arch }}.${{ matrix.image }} -L
+
+      - name: Load image into Docker
+        id: load
+        run: |
+          docker load < result
+          
+          # Extract the image name and tag from the loaded image
+          LOADED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | head -n 1)
+          IMAGE_NAME=$(echo $LOADED_IMAGE | cut -d: -f1)
+          IMAGE_TAG=$(echo $LOADED_IMAGE | cut -d: -f2)
+          
+          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Tag and push image
+        if: github.event_name != 'pull_request'
+        run: |
+          # Determine the architecture tag
+          if [ "${{ matrix.arch }}" = "x86_64-linux" ]; then
+            DOCKER_ARCH="amd64"
+          else
+            DOCKER_ARCH="arm64"
+          fi
+
+          # Get the loaded image info
+          IMAGE_NAME="${{ steps.load.outputs.image_name }}"
+          IMAGE_TAG="${{ steps.load.outputs.image_tag }}"
+          
+          # Tag with architecture suffix
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${IMAGE_TAG}-${DOCKER_ARCH}
+          
+          # Push architecture-specific image
+          docker push ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${IMAGE_TAG}-${DOCKER_ARCH}
+          
+          # If this is a tagged release, also push with version tag
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${VERSION}-${DOCKER_ARCH}
+            docker push ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${VERSION}-${DOCKER_ARCH}
+          fi
+
+  create-manifest:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        image: [alr-java, alr-dafny]
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          IMAGE_NAME="${{ matrix.image }}"
+          IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          
+          # Create manifest for the tag
+          docker manifest create ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${IMAGE_TAG} \
+            ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${IMAGE_TAG}-amd64 \
+            ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${IMAGE_TAG}-arm64
+          
+          docker manifest push ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${IMAGE_TAG}
+          
+          # If this is a tagged release, create version manifest
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            docker manifest create ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${VERSION} \
+              ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${VERSION}-amd64 \
+              ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${VERSION}-arm64
+            
+            docker manifest push ${{ env.IMAGE_PREFIX }}/${IMAGE_NAME}:${VERSION}
+          fi
