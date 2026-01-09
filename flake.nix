@@ -65,10 +65,17 @@
         arch = archMap.${system};
       };
       tag = "25.11-trixie";
+      # https://github.com/NixOS/nixpkgs/issues/129007
       runAsRoot = ''
-        # https://github.com/NixOS/nixpkgs/issues/129007
-        for f in /usr/bin/*; do /bin/ln -s $f /bin/$(/bin/basename $f) 2>/dev/null || true; done
-        for f in /usr/lib/*; do /bin/ln -s $f /lib/$(/bin/basename $f) 2>/dev/null || true; done
+        #!${pkgs.stdenv.shell}
+        if [[ ! ( -L /sbin ) ]] ; then
+          for i in $(ls /usr/sbin) ; do
+              ln -sf /usr/sbin/$i /sbin/$i || true
+          done
+        fi
+        for i in $(ls /usr/bin) ; do
+            ln -s /usr/bin/$i /bin/$i || true
+        done
       '';
       diskSize = 2048;
     in {
