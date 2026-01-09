@@ -18,15 +18,26 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
 
     strategy:
       matrix:
-        image: [alr-java, alr-dafny]
-        arch: [x86_64-linux, aarch64-linux]
+        include:
+          - arch: x86_64-linux
+            runner: ubuntu-latest
+            image: alr-java
+          - arch: x86_64-linux
+            runner: ubuntu-latest
+            image: alr-dafny
+          - arch: aarch64-linux
+            runner: ubuntu-24.04-arm
+            image: alr-java
+          - arch: aarch64-linux
+            runner: ubuntu-24.04-arm
+            image: alr-dafny
 
     steps:
       - name: Checkout repository
@@ -37,7 +48,6 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
           extra_nix_config: |
-            extra-platforms = x86_64-linux aarch64-linux
             system-features = nixos-test benchmark big-parallel kvm
 
       - name: Set up Docker Buildx
@@ -50,11 +60,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64,amd64
 
       - name: Build image with Nix
         run: |
