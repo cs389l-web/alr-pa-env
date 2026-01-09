@@ -14,7 +14,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/cs389l-web/alr-pa-env
-  IMAGE_TAG: "25.11"
+  IMAGE_TAG: "25.11-trixie"
 
 jobs:
   build-and-push:

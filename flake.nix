@@ -51,23 +51,24 @@
         "aarch64-linux" = "arm64";
       };
       baseImageHashes = {
-        "x86_64-linux" = "sha256-ePkUyhDGAJTKBs1QNJQHs/NUD7IFA3xmhAVb9lRDQGw=";
-        "aarch64-linux" = "sha256-3F8WSg/sRBqgy8mFOkJzPLsiH38BtHV8jTY/leljcqw=";
+        "x86_64-linux" = "sha256-7skZqBy1GE4hjEH67XizzwhUzMvo4bJNvmD0v71pBgE=";
+        "aarch64-linux" = "sha256-m2Gjt52Z5X1Aa2RFg42p6OPd90s/6AF/zSm0UYiU2YI=";
       };
       devcontainerBase = pkgs.dockerTools.pullImage {
         imageName = "mcr.microsoft.com/devcontainers/base";
-        imageDigest = "sha256:03359a0274041de0ba5d4e667ef305678834799d2ffa2b0c49dd71356e33c7be";
+        imageDigest = "sha256:30b0a0c004ca94d36c323ee993361a7e0ae25ea255ea125201e8a9587501c324";
         finalImageName = "devcontainers/base";
-        finalImageTag = "1.0.2-alpine-3.21";
+        finalImageTag = "2.1.3-trixie";
         sha256 = baseImageHashes.${system};
         os = "linux";
         arch = archMap.${system};
       };
+      tag = "25.11-trixie";
     in {
       alr-java = with pkgs;
         dockerTools.buildImage {
           name = "alr-java";
-          tag = "25.11";
+          inherit tag;
           fromImage = devcontainerBase;
 
           copyToRoot = buildEnv {
@@ -85,7 +86,7 @@
       alr-dafny = with pkgs;
         dockerTools.buildImage {
           name = "alr-dafny";
-          tag = "25.11";
+          inherit tag;
           fromImage = devcontainerBase;
 
           copyToRoot = buildEnv {
