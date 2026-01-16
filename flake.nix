@@ -16,13 +16,7 @@
       "aarch64-darwin"
     ];
 
-    dockerSystems = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
-
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
-    forDockerSystems = f: nixpkgs.lib.genAttrs dockerSystems (system: f system);
   in {
     devShells = forAllSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
@@ -43,7 +37,7 @@
       pa3 = dafnyEnv;
     });
 
-    packages = forDockerSystems (system: let
+    packages = forAllSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
 
       archMap = {
@@ -111,6 +105,19 @@
             User = "vscode:vscode";
           };
         };
+
+      gradescope-utils = pkgs.python3Packages.buildPythonPackage rec {
+        pname = "gradescope-utils";
+        version = "0.5.0";
+        pyproject = true;
+        src = pkgs.python3Packages.fetchPypi {
+          inherit pname version;
+          sha256 = "1m95jp0bdmrzgnkm84p4kn08c4qcrgh4w2ifc5sryk4zmdaj8m2i";
+        };
+        build-system = with pkgs.python3Packages; [setuptools];
+        propagatedBuildInputs = with pkgs.python3Packages; [pyyaml];
+        doCheck = false;
+      };
     });
   };
 }
