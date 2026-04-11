@@ -17,6 +17,12 @@
     ];
 
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
+
+    mkDafnyCheck = pkgs:
+      with pkgs;
+        writeShellScriptBin "dafny-check" ''
+          exec ${lib.getExe dafny} verify --disable-nonlinear-arithmetic --log-format text --allow-warnings "$@"
+        '';
   in {
     devShells = forAllSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
@@ -29,7 +35,7 @@
         };
       dafnyEnv = with pkgs;
         mkShell {
-          buildInputs = [dafny dotnet-sdk];
+          buildInputs = [dafny dotnet-sdk (mkDafnyCheck pkgs)];
         };
     in {
       pa1 = javaEnv;
@@ -85,8 +91,9 @@
           };
 
           config = {
-            User = "vscode:vscode";
+            Entrypoint = ["/bin/bash"];
             Env = ["JAVA_HOME=${jdk_headless}"];
+            User = "vscode:vscode";
           };
         };
 
@@ -97,11 +104,12 @@
 
           copyToRoot = buildEnv {
             name = "image-root";
-            paths = [dafny dotnet-sdk coreutils];
+            paths = [dafny dotnet-sdk coreutils (mkDafnyCheck pkgs)];
             pathsToLink = ["/bin"];
           };
 
           config = {
+            Entrypoint = ["/bin/bash"];
             User = "vscode:vscode";
           };
         };
